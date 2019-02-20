@@ -20,3 +20,6 @@ class Award(scrapy.Item):
     lead_name = scrapy.Field(
         output_processor=TakeFirst(),
     )
+    fiscal_year = scrapy.Field(
+        output_processor=TakeFirst(),
+    )

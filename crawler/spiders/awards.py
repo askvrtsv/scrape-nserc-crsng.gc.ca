@@ -51,12 +51,15 @@ FORMDATA = {
     'bSortable_2': 'true',
     'bSortable_3': 'true',
     'bSortable_4': 'true',
-    'fiscalyearfrom': '2017',
-    'fiscalyearto': '2017',
 }
 
 HEADERS = {
     'X-Requested-With': 'XMLHttpRequest',
+}
+
+FIELDS = {
+    'Project Lead Name': 'lead_name',
+    'Fiscal Year': 'fiscal_year',
 }
 
 
@@ -64,11 +67,30 @@ class AwardsSpider(scrapy.Spider):
     name = 'awards'
     allowed_domains = ['www.nserc-crsng.gc.ca']
 
-    def start_requests(self):
-        yield scrapy.FormRequest(URL, callback=self.parse, formdata=FORMDATA,
-                                 headers=HEADERS)
+    start_urls = ['http://www.nserc-crsng.gc.ca/ase-oro/index_eng.asp?new']
 
     def parse(self, response):
+        """Установка параметров поиска.
+
+        ВАЖНО! Удалить .scrapy перед изменением параметров, потому что
+        параметры поиска храятся в сессии на сервере.
+        """
+        yield scrapy.FormRequest.from_response(
+            response,
+            formid='contact-form',
+            formdata={
+                # Параметры поиска
+                'fiscalyearfrom': '2015',
+                'fiscalyearto': '2015',
+            },
+            callback=self.after_search
+        )
+
+    def after_search(self, response):
+        yield scrapy.FormRequest(URL, callback=self.parse_num_of_records,
+                                 formdata=FORMDATA)
+
+    def parse_num_of_records(self, response):
         """Поиск количества записей."""
         try:
             data = json.loads(response.body)
@@ -77,7 +99,7 @@ class AwardsSpider(scrapy.Spider):
             return
 
         num_on_page = 200
-        for start in range(0, total_records, num_on_page)[:1]:
+        for start in range(0, total_records, num_on_page):
             data = FORMDATA.copy()
             data['iDisplayStart'] = str(start)
             data['iDisplayLength'] = str(num_on_page)
@@ -104,10 +126,14 @@ class AwardsSpider(scrapy.Spider):
 
     def parse_award(self, response):
         l = ItemLoader(item=Award(), response=response)
+
         l.add_value('url', response.url)
         l.add_css('project_title', '#main-container-1col > h2::text')
-        l.add_xpath(
-            'lead_name',
-            '//strong[text()="Project Lead Name:"]/../following-sibling::td/text()'
-        )
+
+        for title, field in FIELDS.items():
+            l.add_xpath(
+                field,
+                f'//strong[text()="{title}:"]/../following-sibling::td/text()'
+            )
+
         return l.load_item()
